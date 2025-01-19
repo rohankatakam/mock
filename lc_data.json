@@ -1,0 +1,61 @@
+{
+    "number": 1,
+    "name": "Two Sum",
+    "description": "Given an array of integers `nums` and an integer `target`, return the indices of the two numbers such that they add up to `target`. You may assume that each input would have exactly one solution, and you may not use the same element twice. The order of the indices in the output does not matter.",
+    "constraints": [
+      "2 <= nums.length <= 10^4",
+      "-10^9 <= nums[i] <= 10^9",
+      "-10^9 <= target <= 10^9",
+      "Only one valid answer exists."
+    ],
+    "input_params": {
+        "nums": "List[int]",
+        "target": "int"
+    },
+    "return_params": {
+        "indices": "List[int]"
+    },
+    "test_cases": [
+      {
+        "input": [2, 7, 11, 15],
+        "target": 9,
+        "expected_output": [0, 1],
+        "description": "The numbers at indices 0 and 1 (2 and 7) add up to the target (9)."
+      },
+      {
+        "input": [3, 2, 4],
+        "target": 6,
+        "expected_output": [1, 2],
+        "description": "The numbers at indices 1 and 2 (2 and 4) add up to the target (6)."
+      },
+      {
+        "input": [3, 3],
+        "target": 6,
+        "expected_output": [0, 1],
+        "description": "The same number (3) can be used from different indices (0 and 1) to add up to the target (6)."
+      },
+      {
+        "input": [-1, -2, -3, -4, -5],
+        "target": -8,
+        "expected_output": [2, 4],
+        "description": "The numbers at indices 2 and 4 (-3 and -5) add up to the target (-8)."
+      },
+      {
+        "input": [0, 4, 3, 0],
+        "target": 0,
+        "expected_output": [0, 3],
+        "description": "Zero can be used twice if two different indices (0 and 3) contain it, and their sum equals the target (0)."
+      }
+    ],
+    "naive_solution": "Use two nested loops to check every possible pair of numbers. For each number at index i, iterate through all numbers at index j > i and check if they sum to target. This approach has O(n²) time complexity and O(1) space complexity.",
+    "naive_solution_time_complexity": "O(n^2)",
+    "naive_solution_space_complexity": "O(1)",
+    "optimized_solution": "Use a hash map to store the complement of each number. For each number x at index i, check if target - x exists in the map. If it does, return the indices of x and the complement. If not, add x to the hash map with its index. This approach ensures O(n) time complexity with O(n) space.",
+    "optimized_solution_time_complexity": "O(n)",
+    "optimized_solution_space_complexity": "O(n)",
+    "additional_notes": [
+      "The problem assumes that there is exactly one solution, so no edge case handling for multiple answers is required.",
+      "If the input array is sorted, the problem could also be solved using a two-pointer technique, but the hash map solution works universally."
+    ]
+  }
+  
