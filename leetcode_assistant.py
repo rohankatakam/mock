@@ -49,14 +49,18 @@ import io
 import os
 import sys
 import traceback
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+import ttkthemes
+import re
+import time
+import multiprocessing
 
 import cv2
 import pyaudio
 import PIL.Image
 import mss
 import pyautogui  # For automated typing
-import time
-import re
 
 import argparse
 
@@ -131,23 +135,36 @@ CONFIG = {
 pya = pyaudio.PyAudio()
 
 
+def run_leetcode_gui():
+    """Run the LeetCode GUI using the existing LeetCodeSolverGUI class"""
+    try:
+        # Import the GUI class from the existing module
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        sys.path.append(module_dir)
+        from leetcode_solver_gui import LeetCodeSolverGUI, main
+        
+        # Use the main function from leetcode_solver_gui.py
+        main()
+    except Exception as e:
+        print(f"Error in GUI: {e}")
+
+
 class LeetCodeAssistant:
     def __init__(self, video_mode=DEFAULT_MODE):
         self.video_mode = video_mode
-
-        self.audio_in_queue = None
-        self.out_queue = None
-
+        self.audio_in_queue = asyncio.Queue()
+        self.audio_out_queue = asyncio.Queue()
         self.session = None
+        self.audio_stream = None
         self.analyzer_session = None
         self.last_screen = None
         self.code_detected = False
         self.editor_position = None
+        self.gui_showing = False
         
         # Set up PyAutoGUI safety settings
         pyautogui.PAUSE = 0.5  # Add a 0.5 second pause between actions
-        pyautogui.FAILSAFE = True  # Move mouse to upper-left to abort
-        
+
     async def find_code_editor(self):
         """Locate the LeetCode code editor area"""
         try:
@@ -209,6 +226,7 @@ class LeetCodeAssistant:
                 image_io = io.BytesIO()
                 self.last_screen.save(image_io, format="jpeg")
                 image_io.seek(0)
+                image_io.seek(0)
                 image_bytes = image_io.read()
                 
                 await self.analyzer_session.send(
@@ -218,10 +236,61 @@ class LeetCodeAssistant:
             
             await asyncio.sleep(2.0)
 
+    def is_solution_request(self, text: str) -> bool:
+        """Check if the text is requesting a solution."""
+        solution_phrases = [
+            "give me solution",
+            "show me the code",
+            "solve this",
+            "how to solve",
+            "what's the solution",
+            "what is the solution",
+            "code solution",
+            "implement this",
+            "write the code",
+            "help me code",
+            "solution code",
+            "coding solution",
+            "give me the solution",  
+            "show the solution",
+            "solve it",
+            "solve the problem",
+            "write solution",
+            "solution please",
+        ]
+        text = text.lower().strip()
+        return any(phrase in text or text in phrase for phrase in solution_phrases)
+
+    def create_gui(self):
+        """Create the GUI in a separate process"""
+        try:
+            # Start GUI in a new process
+            gui_process = multiprocessing.Process(target=run_leetcode_gui)
+            gui_process.daemon = True  # Make process exit when main process exits
+            gui_process.start()
+            self.gui_showing = True
+        except Exception as e:
+            print(f"Error launching GUI: {e}")
+            self.gui_showing = False
+
     async def process_voice_command(self, command):
         """Process voice commands including requests to type solutions"""
-        if "type solution" in command.lower() or "implement solution" in command.lower():
-            # Ask the analyzer for the solution
+        print(f"Processing command: {command}")  # Debug print
+        
+        if self.is_solution_request(command):
+            print("Solution request detected, launching GUI...")  # Debug print
+            # Launch solution GUI without sending to model
+            if not self.gui_showing:
+                # Create GUI in separate process
+                self.create_gui()
+            return  # Don't process further to avoid audio response
+            
+        elif "type solution" in command.lower() or "implement solution" in command.lower():
+            # Keep existing solution typing functionality
+            if not self.analyzer_session:
+                print("No code detected yet, please wait...")
+                return
+                
             await self.analyzer_session.send(
                 input="Please provide the complete solution code for this problem.",
                 end_of_turn=True
@@ -260,14 +329,25 @@ class LeetCodeAssistant:
                 self.audio_in_queue.get_nowait()
 
     async def send_text(self):
+        """Process text input from console"""
         while True:
-            text = await asyncio.to_thread(
-                input,
-                "message > ",
-            )
-            if text.lower() == "q":
-                break
-            await self.session.send(input=text or ".", end_of_turn=True)
+            try:
+                text = await asyncio.to_thread(
+                    input,
+                    "message > "
+                )
+                if text.lower() == "q":
+                    break
+                    
+                # Check for solution request in text input
+                if self.is_solution_request(text):
+                    print("Text solution request detected")
+                    await self.process_voice_command(text)
+                else:
+                    await self.session.send(input=text or ".", end_of_turn=True)
+            except Exception as e:
+                print(f"Error in send_text: {e}")
+                await asyncio.sleep(1)  # Avoid tight loop on error
 
     def _get_frame(self, cap):
         # Read the frameq
@@ -304,7 +384,7 @@ class LeetCodeAssistant:
 
             await asyncio.sleep(1.0)
 
-            await self.out_queue.put(frame)
+            await self.audio_out_queue.put(frame)
 
         # Release the VideoCapture object
         cap.release()
@@ -338,11 +418,11 @@ class LeetCodeAssistant:
 
             await asyncio.sleep(1.0)
 
-            await self.out_queue.put(frame)
+            await self.audio_out_queue.put(frame)
 
     async def send_realtime(self):
         while True:
-            msg = await self.out_queue.get()
+            msg = await self.audio_out_queue.get()
             await self.session.send(input=msg)
 
     async def listen_audio(self):
@@ -362,7 +442,7 @@ class LeetCodeAssistant:
             kwargs = {}
         while True:
             data = await asyncio.to_thread(self.audio_stream.read, CHUNK_SIZE, **kwargs)
-            await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+            await self.audio_out_queue.put({"data": data, "mime_type": "audio/pcm"})
 
     async def play_audio(self):
         stream = await asyncio.to_thread(
@@ -388,7 +468,7 @@ class LeetCodeAssistant:
                 await self.session.send(input=TUTOR_PROMPT, end_of_turn=True)
 
                 self.audio_in_queue = asyncio.Queue()
-                self.out_queue = asyncio.Queue(maxsize=5)
+                self.audio_out_queue = asyncio.Queue(maxsize=5)
 
                 tg.create_task(self.send_realtime())
                 tg.create_task(self.listen_audio())
@@ -396,6 +476,7 @@ class LeetCodeAssistant:
                 tg.create_task(self.analyze_code())  # Add code analysis task
                 tg.create_task(self.receive_audio())
                 tg.create_task(self.play_audio())
+                tg.create_task(self.send_text())  # Add text input task
 
                 # Keep running until interrupted
                 while True:
@@ -412,6 +493,8 @@ class LeetCodeAssistant:
 
 
 if __name__ == "__main__":
+    # Required for multiprocessing on macOS
+    multiprocessing.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",

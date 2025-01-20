@@ -2,6 +2,7 @@ from enum import Enum, auto
 import asyncio
 import json
 import logging
+import os
 from typing import Dict, Any, Optional
 from audio_interview import AudioInterviewer, InterviewState
 from leetcode_assistant import LeetCodeAssistant, MODEL, CONFIG
@@ -13,9 +14,11 @@ class IntegratedInterviewState(Enum):
     LEETCODE_ASSISTANT = auto() # Using LeetCodeAssistant
 
 class IntegratedInterviewer:
-    def __init__(self, problem_data_path: str):
+    def __init__(self):
         # Load problem data
-        with open(problem_data_path, 'r') as f:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(current_dir, 'lc_data.json')
+        with open(data_path, 'r') as f:
             self.problem_data = json.load(f)
             
         # Initialize components
@@ -50,7 +53,7 @@ async def main():
     # Set up logging
     logging.basicConfig(level=logging.INFO)
     
-    interviewer = IntegratedInterviewer(problem_data_path="lc_data.json")
+    interviewer = IntegratedInterviewer()
     await interviewer.run()
 
 if __name__ == "__main__":

@@ -2,9 +2,18 @@ from enum import Enum, auto
 from typing import Optional, Dict, Any
 import asyncio
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
 MODEL = "models/gemini-2.0-flash-exp"
+
+# Load the problem data
+def load_problem_data():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(current_dir, 'lc_data.json')
+    with open(data_path, 'r') as f:
+        return json.load(f)
 
 class InterviewState(Enum):
     ASK_NAME = auto()
@@ -14,7 +23,7 @@ class InterviewState(Enum):
     QUESTIONS = auto()
     CODING = auto()
 
-class AudioInterviewer(AudioLoop):
+class AudioInterviewer:
     def __init__(self, problem_data: Dict[Any, Any], model: str = MODEL):
         config = {
             "model": model,
@@ -139,5 +148,9 @@ class AudioInterviewer(AudioLoop):
 
 # Example usage
 async def run_audio_interview():
+    lc_data = load_problem_data()
     interviewer = AudioInterviewer(problem_data=lc_data)
     await interviewer.run()
+
+if __name__ == "__main__":
+    asyncio.run(run_audio_interview())
