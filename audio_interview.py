@@ -22,6 +22,21 @@ class InterviewState(Enum):
     QUESTIONS = auto()
     CODING = auto()
 
+PROMPT_MAPPING = {
+    InterviewState.ASK_NAME: "Hello! I'm your technical interviewer today. Could you please tell me your name?",
+    InterviewState.INTRODUCTION: (
+        "Thank you, {candidate_name}. This will be a 25-minute technical interview where you'll solve a coding problem. "
+        "Are you ready to begin?"
+    ),
+    InterviewState.PROBLEM_DESCRIPTION: (
+        "Excellent. Today's problem is '{problem_name}'.\n\n"
+        "{description}\n\n"
+        "Constraints:\n{constraints}\n\n"
+        "Examples:\n{examples}\n\n"
+        "Do you have any questions about the problem?"
+    ),
+}
+
 class AudioInterviewer:
     def __init__(self, problem_data: Dict[Any, Any], model: str = MODEL):
         self.problem_data = problem_data
@@ -56,31 +71,45 @@ class AudioInterviewer:
         self.client = genai.Client(http_options={"api_version": "v1alpha"})
         self.model = model
         self.session = None
+        
+    def _format_constraints(self) -> str:
+        """Formats problem constraints into a bulleted list."""
+        return "\n".join([f"- {c}" for c in self.problem_data['constraints']])
+    
+    def _format_examples(self) -> str:
+        """Formats problem examples."""
+        examples = []
+        for i, example in enumerate(self.problem_data['test_cases'], start=1):
+            examples.append(
+                f"Example {i}:\n"
+                f"Input: nums = {example['input']}, target = {example['target']}\n"
+                f"Output: {example['expected_output']}\n"
+                f"Explanation: {example['description']}\n"
+            )
+        return "\n".join(examples)
 
     def _get_interviewer_prompt(self) -> str:
-        """Generate the appropriate prompt based on current state."""
-        if self.state == InterviewState.ASK_NAME:
-            return "Hello! I'm your technical interviewer today. Could you please tell me your name?"
-        elif self.state == InterviewState.INTRODUCTION:
-            return f"Thank you, {self.candidate_name}. This will be a 25-minute technical interview where you'll solve a coding problem. Are you ready to begin?"
-        elif self.state == InterviewState.PROBLEM_DESCRIPTION:
-            constraints = "\n".join([f"- {c}" for c in self.problem_data['constraints']])
-            return (
-                f"Excellent. Today's problem is '{self.problem_data['name']}'.\n\n"
-                f"{self.problem_data['description']}\n\n"
-                f"Constraints:\n{constraints}\n\n"
-                "Let me walk you through some examples:\n"
-                f"Example 1:\n"
-                f"Input: nums = {self.problem_data['test_cases'][0]['input']}, target = {self.problem_data['test_cases'][0]['target']}\n"
-                f"Output: {self.problem_data['test_cases'][0]['expected_output']}\n"
-                f"Explanation: {self.problem_data['test_cases'][0]['description']}\n\n"
-                f"Example 2:\n"
-                f"Input: nums = {self.problem_data['test_cases'][1]['input']}, target = {self.problem_data['test_cases'][1]['target']}\n"
-                f"Output: {self.problem_data['test_cases'][1]['expected_output']}\n"
-                f"Explanation: {self.problem_data['test_cases'][1]['description']}\n\n"
-                "Do you have any questions about the problem?"
-            )
-        return ""
+        """Retrieve the appropriate prompt for the current state."""
+        # Retrieve the template for the current state
+        prompt_template = PROMPT_MAPPING.get(self.state, "")
+        if not prompt_template:
+            logger.warning(f"No prompt found for state {self.state}")
+            return ""
+
+        # Prepare context for dynamic formatting
+        context = {
+            "candidate_name": self.candidate_name,
+            "problem_name": self.problem_data.get("name", "Unknown Problem"),
+            "description": self.problem_data.get("description", "No description provided."),
+            "constraints": self._format_constraints(),
+            "examples": self._format_examples(),
+        }
+
+        try:
+            return prompt_template.format(**context)
+        except KeyError as e:
+            logger.error(f"Missing context for prompt formatting: {e}")
+            return "There was an error generating the prompt. Please wait."
 
     async def listen_audio(self):
         """Background task to listen for audio input"""
